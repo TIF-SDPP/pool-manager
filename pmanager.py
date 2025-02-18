@@ -51,7 +51,7 @@ def on_message_received(ch, method, properties, body):
     print(f"Active workers: {num_workers}")
 
     connection = pika.BlockingConnection(
-        pika.ConnectionParameters(host='rabbit1', port=5672, credentials=pika.PlainCredentials('rabbitmq', 'rabbitmq'))
+        pika.ConnectionParameters(host='service-rabbitmq.default.svc.cluster.local', port=5672, credentials=pika.PlainCredentials('guest', 'guest'))
     )
     channel = connection.channel()
 
@@ -88,7 +88,7 @@ def run_flask():
 def run_rabbitmq():
     """Conecta a RabbitMQ y empieza a consumir mensajes."""
     connection = pika.BlockingConnection(
-        pika.ConnectionParameters(host='rabbit1', port=5672, credentials=pika.PlainCredentials('rabbitmq', 'rabbitmq'))
+        pika.ConnectionParameters(host='service-rabbitmq.default.svc.cluster.local', port=5672, credentials=pika.PlainCredentials('guest', 'guest'))
     )
     channel = connection.channel()
     channel.exchange_declare(exchange='workers_queue', exchange_type='topic', durable=True)
