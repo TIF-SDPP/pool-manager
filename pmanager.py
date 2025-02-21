@@ -5,6 +5,7 @@ import json
 from flask_cors import CORS
 import sys
 import threading
+import time
 
 # Get the current script's directory
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -40,6 +41,16 @@ def check_status():
 
     return jsonify({'status': 'OK'})
 
+
+def connect_rabbitmq():
+    while True:
+        try:
+            connection = pika.BlockingConnection(pika.ConnectionParameters(host='service-rabbitmq.default.svc.cluster.local', port=5672, credentials=pika.PlainCredentials('guest', 'guest')))
+            return connection
+        except pika.exceptions.AMQPConnectionError:
+            print("Fallo en la conexión, reintentando en 5 segundos...")
+            time.sleep(5)
+
 def on_message_received(ch, method, properties, body):
     data = json.loads(body)
     print(f"Message {data} received")
@@ -50,9 +61,7 @@ def on_message_received(ch, method, properties, body):
 
     print(f"Active workers: {num_workers}")
 
-    connection = pika.BlockingConnection(
-        pika.ConnectionParameters(host='service-rabbitmq.default.svc.cluster.local', port=5672, credentials=pika.PlainCredentials('guest', 'guest'))
-    )
+    connection = connect_rabbitmq()
     channel = connection.channel()
 
     # Dividir el rango de números aleatorios según los workers disponibles
@@ -87,9 +96,7 @@ def run_flask():
 
 def run_rabbitmq():
     """Conecta a RabbitMQ y empieza a consumir mensajes."""
-    connection = pika.BlockingConnection(
-        pika.ConnectionParameters(host='service-rabbitmq.default.svc.cluster.local', port=5672, credentials=pika.PlainCredentials('guest', 'guest'))
-    )
+    connection = connect_rabbitmq()
     channel = connection.channel()
     channel.exchange_declare(exchange='workers_queue', exchange_type='topic', durable=True)
     channel.queue_declare(queue='challenge_queue', durable=True)
