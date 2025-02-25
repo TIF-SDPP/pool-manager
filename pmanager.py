@@ -27,7 +27,7 @@ app = Flask(__name__)
 CORS(app)
 
 # Función que actualiza las réplicas en el Deployment
-def actualizar_replicas_en_kubernetes(deployment_name, namespace):
+def actualizar_replicas_en_kubernetes(deployment_name, namespace, replicas):
 
     # Después (esto funciona dentro del cluster de Kubernetes)
     config.load_incluster_config()
@@ -39,46 +39,49 @@ def actualizar_replicas_en_kubernetes(deployment_name, namespace):
     deployment = v1_apps.read_namespaced_deployment(deployment_name, namespace)
 
     # Actualizar el número de réplicas
-    deployment.spec.replicas = MIN_WORKERS_COUNT
+    deployment.spec.replicas = replicas
 
     # Aplicar el cambio
     v1_apps.replace_namespaced_deployment(deployment_name, namespace, deployment)
-    print(f"El número de réplicas de {deployment_name} en el namespace {namespace} ha sido actualizado a {MIN_WORKERS_COUNT}.")
+    print(f"El número de réplicas de {deployment_name} en el namespace {namespace} ha sido actualizado a {MIN_WORKERS_COUNT-replicas}.")
 
 # Función principal que se ejecuta cada X segundos
 def ejecutar_periodicamente(deployment_name, namespace, intervalo_segundos):
     while True:
-        # Obtener el número de réplicas a establecer
-        replicas = redis_utils.get_active_workers()
-        
-        if replicas < MIN_WORKERS_COUNT:
-        
-            # Actualizar las réplicas en Kubernetes
-            actualizar_replicas_en_kubernetes(deployment_name, namespace)
-        
-        # Esperar antes de volver a ejecutar
-        print(f"Esperando {intervalo_segundos} segundos para la próxima actualización...")
+        # Contamos workers en la nube y locales
+        workers_cloud = redis_utils.get_active_workers(prefix="workers_cloud")
+        workers_local = redis_utils.get_active_workers(prefix="workers_local")
+        total_workers = workers_cloud + workers_local
+
+        print(f"Workers en la nube: {workers_cloud}, locales: {workers_local}, total: {total_workers}")
+
+        # Si hay menos del mínimo requerido, escalar
+        if workers_local < MIN_WORKERS_COUNT:
+            actualizar_replicas_en_kubernetes(deployment_name, namespace, MIN_WORKERS_COUNT-workers_local)
+
+        print(f"⏳ Esperando {intervalo_segundos} segundos para la próxima verificación...")
         time.sleep(intervalo_segundos)
 
 @app.route('/keep_alive', methods=['POST'])
 def check_status():
     data = request.get_json()
-    worker_id = data.get("worker_id")  # Obtener el ID del worker desde el body
+    worker_id = data.get("worker_id")  
+    is_in_cloud = data.get("worker_user") == "true"  # Convertir a booleano
 
     if not worker_id:
         return jsonify({'error': 'Missing worker_id'}), 400
 
-    # Verificar si el worker ya existe en Redis
-    if redis_utils.exists_worker(worker_id):
-        print(f"Worker {worker_id} refreshed")
-    else:
-        print(f"New worker {worker_id} registered")
-
     # Guardar o actualizar el worker con TTL de 30s
-    redis_utils.setex(f"workers:{worker_id}", 15, "alive")
+    redis_utils.setex(f"workers:{worker_id}", 15, "alive")  
 
+    # Guardar la categoría (nube/local)
+    if is_in_cloud:
+        redis_utils.setex(f"workers_cloud:{worker_id}", 15, "alive")
+    else:
+        redis_utils.setex(f"workers_local:{worker_id}", 15, "alive")
+
+    print(f"Worker {worker_id} registered. Cloud: {is_in_cloud}")
     return jsonify({'status': 'OK'})
-
 
 def connect_rabbitmq():
     while True:
