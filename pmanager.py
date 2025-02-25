@@ -5,6 +5,8 @@ import json
 from flask_cors import CORS
 import sys
 import threading
+import time
+from kubernetes import client, config
 
 # Get the current script's directory
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -17,9 +19,46 @@ sys.path.append(parent_dir)
 from redis_utils import RedisUtils
 redis_utils = RedisUtils()
 
+# Numero minimo de workers activos
+MIN_WORKERS_COUNT = 5
+
 # --- APP side --- 
 app = Flask(__name__)
 CORS(app)
+
+# Función que actualiza las réplicas en el Deployment
+def actualizar_replicas_en_kubernetes(deployment_name, namespace):
+
+    # Después (esto funciona dentro del cluster de Kubernetes)
+    config.load_incluster_config()
+    
+    # Crear el cliente de la API de Kubernetes
+    v1_apps = client.AppsV1Api()
+
+    # Obtener el Deployment
+    deployment = v1_apps.read_namespaced_deployment(deployment_name, namespace)
+
+    # Actualizar el número de réplicas
+    deployment.spec.replicas = MIN_WORKERS_COUNT
+
+    # Aplicar el cambio
+    v1_apps.replace_namespaced_deployment(deployment_name, namespace, deployment)
+    print(f"El número de réplicas de {deployment_name} en el namespace {namespace} ha sido actualizado a {MIN_WORKERS_COUNT}.")
+
+# Función principal que se ejecuta cada X segundos
+def ejecutar_periodicamente(deployment_name, namespace, intervalo_segundos):
+    while True:
+        # Obtener el número de réplicas a establecer
+        replicas = redis_utils.get_active_workers()
+        
+        if replicas < MIN_WORKERS_COUNT:
+        
+            # Actualizar las réplicas en Kubernetes
+            actualizar_replicas_en_kubernetes(deployment_name, namespace)
+        
+        # Esperar antes de volver a ejecutar
+        print(f"Esperando {intervalo_segundos} segundos para la próxima actualización...")
+        time.sleep(intervalo_segundos)
 
 @app.route('/keep_alive', methods=['POST'])
 def check_status():
@@ -105,10 +144,20 @@ def run_rabbitmq():
         print("Connection closed.")
 
 if __name__ == '__main__':
-    flask_thread = threading.Thread(target=run_flask, daemon=True)  # Hilo daemon para Flask
+    flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
 
-    run_rabbitmq()  # Ejecuta RabbitMQ en el hilo principal
+    deployment_name = "deployment-worker"  # Nombre de tu Deployment
+    namespace = "default"  # Namespace donde está el Deployment
+    intervalo_segundos = 30  # Intervalo en segundos entre cada actualización
+
+    # Iniciar la función periódica en un hilo separado
+    update_thread = threading.Thread(target=ejecutar_periodicamente, args=(deployment_name, namespace, intervalo_segundos), daemon=True)
+    update_thread.start()
+
+    run_rabbitmq()  # Mantiene el hilo principal bloqueado con RabbitMQ
+
+
 
 
 

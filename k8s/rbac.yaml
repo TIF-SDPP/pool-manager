@@ -1,0 +1,24 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: deployment-editor
+  namespace: default  # Asegúrate de que coincide con tu namespace
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "update", "patch"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: deployment-editor-binding
+  namespace: default
+subjects:
+  - kind: ServiceAccount
+    name: default  # Este es el ServiceAccount que usa el pod
+    namespace: default
+roleRef:
+  kind: Role
+  name: deployment-editor
+  apiGroup: rbac.authorization.k8s.io

@@ -2,3 +2,4 @@ flask
 pika
 flask-cors
 redis
+kubernetes
