@@ -48,3 +48,22 @@ class RedisUtils:
         except Exception as e:
             print(f"Error obteniendo workers activos de Redis: {e}")
             return 0  # Retornamos 0 en caso de error
+        
+    def get_active_workers_gpu(self):
+        
+        # Obtener todas las claves que representan workers
+        worker_keys = self.redis_client.keys("workers:*")
+
+        gpu_workers = []
+
+        for key in worker_keys:
+            worker_type = self.redis_client.hget(key, "worker_type")
+            if worker_type and worker_type != "worker_cpu":
+                gpu_workers.append(key)
+
+        print("Workers con GPU:", gpu_workers)
+        return gpu_workers
+    
+    def actualizar_worker(self, worker_id, worker_type):
+        self.redis_client.hset(f"workers:{worker_id}", mapping={"status": "alive", "worker_type": worker_type})
+        self.redis_client.expire(f"workers:{worker_id}", 30)

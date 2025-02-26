@@ -43,21 +43,20 @@ def actualizar_replicas_en_kubernetes(deployment_name, namespace, replicas):
 
     # Aplicar el cambio
     v1_apps.replace_namespaced_deployment(deployment_name, namespace, deployment)
-    print(f"El número de réplicas de {deployment_name} en el namespace {namespace} ha sido actualizado a {MIN_WORKERS_COUNT-replicas}.")
+    print(f"El número de réplicas de {deployment_name} en el namespace {namespace} ha sido actualizado a {replicas}.")
 
 # Función principal que se ejecuta cada X segundos
 def ejecutar_periodicamente(deployment_name, namespace, intervalo_segundos):
     while True:
-        # Contamos workers en la nube y locales
-        workers_cloud = redis_utils.get_active_workers(prefix="workers_cloud")
-        workers_local = redis_utils.get_active_workers(prefix="workers_local")
-        total_workers = workers_cloud + workers_local
 
-        print(f"Workers en la nube: {workers_cloud}, locales: {workers_local}, total: {total_workers}")
+        # Obtenemos los workers GPU activos
+        workers_gpu = redis_utils.get_active_workers_gpu()
 
         # Si hay menos del mínimo requerido, escalar
-        if workers_local < MIN_WORKERS_COUNT:
-            actualizar_replicas_en_kubernetes(deployment_name, namespace, MIN_WORKERS_COUNT-workers_local)
+        if len(workers_gpu) == 0:
+            actualizar_replicas_en_kubernetes(deployment_name, namespace, MIN_WORKERS_COUNT)
+        else:
+            actualizar_replicas_en_kubernetes(deployment_name, namespace, 0)
 
         print(f"⏳ Esperando {intervalo_segundos} segundos para la próxima verificación...")
         time.sleep(intervalo_segundos)
@@ -66,21 +65,22 @@ def ejecutar_periodicamente(deployment_name, namespace, intervalo_segundos):
 def check_status():
     data = request.get_json()
     worker_id = data.get("worker_id")  
-    is_in_cloud = data.get("worker_user") == "true"  # Convertir a booleano
+    is_user = data.get("worker_user") == "true"  # Convertir a booleano
+    worker_type = data.get("worker_type")
 
     if not worker_id:
         return jsonify({'error': 'Missing worker_id'}), 400
 
     # Guardar o actualizar el worker con TTL de 30s
-    redis_utils.setex(f"workers:{worker_id}", 15, "alive")  
+    redis_utils.actualizar_worker(worker_id, worker_type)
 
     # Guardar la categoría (nube/local)
-    if is_in_cloud:
-        redis_utils.setex(f"workers_cloud:{worker_id}", 15, "alive")
+    if not is_user:
+        redis_utils.setex(f"workers_cloud:{worker_id}", 30, "alive")
     else:
-        redis_utils.setex(f"workers_local:{worker_id}", 15, "alive")
+        redis_utils.setex(f"workers_local:{worker_id}", 30, "alive")
 
-    print(f"Worker {worker_id} registered. Cloud: {is_in_cloud}")
+    print(f"Worker {worker_id} registered. Local: {is_user}")
     return jsonify({'status': 'OK'})
 
 def connect_rabbitmq():
