@@ -105,12 +105,11 @@ def on_message_received(ch, method, properties, body):
     connection = connect_rabbitmq()
     channel = connection.channel()
 
-    # Definir el escalar que controla cuántas tareas asignar por worker
-    tasks_per_worker = 10
+    escalar = 5
 
-    # Calcular el rango de números aleatorios en función del escalar
+    # Dividir el rango de números aleatorios según el escalar
     max_value = data['random_num_max']
-    num_tasks = max_value // tasks_per_worker  # Número total de subtareas
+    step = max_value // escalar
 
     # Obtenemos los workers GPU activos
     workers_gpu = redis_utils.get_active_workers_gpu()
@@ -121,15 +120,15 @@ def on_message_received(ch, method, properties, body):
     else:
         prefix = data['prefix']
 
-    for i in range(num_tasks):
+    for i in range(num_workers):
         task_data = {
             "id": data['id'],
             "transactions": data['transactions'],
             "prefix": prefix,
             "base_string_chain": data['base_string_chain'],
             "blockchain_content": data['blockchain_content'],
-            "random_start": i * tasks_per_worker,
-            "random_end": (i + 1) * tasks_per_worker if i < num_tasks - 1 else max_value
+            "random_start": i * step,
+            "random_end": (i + 1) * step if i < escalar - 1 else max_value
         }
 
         # Publicar la subtarea en RabbitMQ
@@ -138,7 +137,7 @@ def on_message_received(ch, method, properties, body):
             routing_key='hash_task',
             body=json.dumps(task_data)
         )
-        print(f"Subtask {i+1}/{num_tasks} sent: {task_data['random_start']} - {task_data['random_end']}")
+        print(f"Subtask {i+1}/{escalar} sent: {task_data['random_start']} - {task_data['random_end']}")
 
     ch.basic_ack(delivery_tag=method.delivery_tag)
     connection.close()
