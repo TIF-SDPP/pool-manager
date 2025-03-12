@@ -7,6 +7,7 @@ import sys
 import threading
 import time
 from kubernetes import client, config
+from kubernetes.client.rest import ApiException
 
 # Get the current script's directory
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -28,22 +29,34 @@ CORS(app)
 
 # Función que actualiza las réplicas en el Deployment
 def actualizar_replicas_en_kubernetes(deployment_name, namespace, replicas):
-
-    # Después (esto funciona dentro del cluster de Kubernetes)
-    config.load_incluster_config()
+    try:
+        # Después (esto funciona dentro del cluster de Kubernetes)
+        config.load_incluster_config()
+        
+        # Crear el cliente de la API de Kubernetes
+        v1_apps = client.AppsV1Api()
+        
+        # Intentar obtener el Deployment
+        deployment = v1_apps.read_namespaced_deployment(deployment_name, namespace)
+        
+        # Si se obtiene, actualizar el número de réplicas
+        deployment.spec.replicas = replicas
+        
+        # Aplicar el cambio
+        v1_apps.replace_namespaced_deployment(deployment_name, namespace, deployment)
+        print(f"El número de réplicas de {deployment_name} en el namespace {namespace} ha sido actualizado a {replicas}.")
     
-    # Crear el cliente de la API de Kubernetes
-    v1_apps = client.AppsV1Api()
-
-    # Obtener el Deployment
-    deployment = v1_apps.read_namespaced_deployment(deployment_name, namespace)
-
-    # Actualizar el número de réplicas
-    deployment.spec.replicas = replicas
-
-    # Aplicar el cambio
-    v1_apps.replace_namespaced_deployment(deployment_name, namespace, deployment)
-    print(f"El número de réplicas de {deployment_name} en el namespace {namespace} ha sido actualizado a {replicas}.")
+    except ApiException as e:
+        if e.status == 404:
+            # Si el Deployment no existe, puedes hacer algo aquí, por ejemplo:
+            print(f"El Deployment {deployment_name} no existe en el namespace {namespace}. Intentando crear uno nuevo...")
+            
+            # Aquí iría la lógica para crear el Deployment si lo deseas, por ejemplo:
+            # Crear un Deployment por defecto o algún comportamiento según el caso.
+            # Esto lo puedes implementar dependiendo de tus necesidades.
+        else:
+            # Si ocurre otro tipo de error, lo reportamos.
+            print(f"Ocurrió un error inesperado al intentar actualizar el Deployment: {e}")
 
 # Función principal que se ejecuta cada X segundos
 def ejecutar_periodicamente(deployment_name, namespace, intervalo_segundos):
@@ -54,7 +67,10 @@ def ejecutar_periodicamente(deployment_name, namespace, intervalo_segundos):
 
         # Si hay menos del mínimo requerido, escalar
         if len(workers_gpu) == 0:
-            actualizar_replicas_en_kubernetes(deployment_name, namespace, MIN_WORKERS_COUNT)
+            if len(redis_utils.get_active_workers_cpu()) < 5:
+                actualizar_replicas_en_kubernetes(deployment_name, namespace, MIN_WORKERS_COUNT)
+            else:
+                print("Numero de workers CPU: OK")
         else:
             actualizar_replicas_en_kubernetes(deployment_name, namespace, 0)
 
