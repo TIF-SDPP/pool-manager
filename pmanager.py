@@ -64,14 +64,18 @@ def ejecutar_periodicamente(deployment_name, namespace, intervalo_segundos):
 
         # Obtenemos los workers GPU activos
         workers_gpu = redis_utils.get_active_workers_gpu()
+        print("Workers GPU: ", workers_gpu)
 
         # Si hay menos del mínimo requerido, escalar
         if len(workers_gpu) == 0:
             if len(redis_utils.get_active_workers_cpu()) < 5:
+                print("Workers CPU", len(redis_utils.get_active_workers_cpu()))
                 actualizar_replicas_en_kubernetes(deployment_name, namespace, MIN_WORKERS_COUNT)
             else:
                 print("Numero de workers CPU: OK")
         else:
+            print("Workers GPU else: ", workers_gpu)
+            print("Workers CPU else: ", len(redis_utils.get_active_workers_cpu()))
             actualizar_replicas_en_kubernetes(deployment_name, namespace, 0)
 
         print(f"⏳ Esperando {intervalo_segundos} segundos para la próxima verificación...")
@@ -102,7 +106,11 @@ def check_status():
 def connect_rabbitmq():
     while True:
         try:
-            connection = pika.BlockingConnection(pika.ConnectionParameters(host='service-rabbitmq.default.svc.cluster.local', port=5672, credentials=pika.PlainCredentials('guest', 'guest')))
+            connection = pika.BlockingConnection(pika.ConnectionParameters(
+                host='service-rabbitmq.default.svc.cluster.local',
+                port=5672,
+                credentials=pika.PlainCredentials('guest', 'guest')
+            ))
             return connection
         except pika.exceptions.AMQPConnectionError:
             print("Fallo en la conexión, reintentando en 5 segundos...")
@@ -169,15 +177,23 @@ def run_rabbitmq():
     channel.exchange_declare(exchange='workers_queue', exchange_type='topic', durable=True)
     channel.queue_declare(queue='challenge_queue', durable=True)
     channel.queue_bind(exchange='block_challenge', queue='challenge_queue', routing_key='blocks')
-    channel.basic_consume(queue='challenge_queue', on_message_callback=on_message_received, auto_ack=False)
     
-    print('Waiting for messages. To exit press CTRL+C')
-    try:
-        channel.start_consuming()
-    except KeyboardInterrupt:
-        print("Consumption stopped by user.")
-        connection.close()
-        print("Connection closed.")
+    while True:
+        try:
+            channel.basic_consume(queue='challenge_queue', on_message_callback=on_message_received, auto_ack=False)
+            print('Waiting for messages. To exit press CTRL+C')
+            channel.start_consuming()
+        except pika.exceptions.AMQPConnectionError as e:
+            print(f"Error de conexión con RabbitMQ: {e}. Intentando reconectar...")
+            connection.close()
+            time.sleep(5)  # Esperar antes de reconectar
+            connection = connect_rabbitmq()
+            channel = connection.channel()
+        except KeyboardInterrupt:
+            print("Consumo detenido por el usuario.")
+            connection.close()
+            print("Conexión cerrada.")
+            break
 
 if __name__ == '__main__':
     flask_thread = threading.Thread(target=run_flask, daemon=True)

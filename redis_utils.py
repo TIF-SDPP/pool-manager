@@ -57,26 +57,35 @@ class RedisUtils:
             return self.get_active_workers(prefix)
 
     def get_active_workers_gpu(self):
-        """Obtener los workers GPU activos desde Redis."""
+        """Obtener los workers GPU activos desde Redis con su información."""
         try:
             worker_keys = self.redis_client.keys("workers:*")
-            gpu_workers = [key for key in worker_keys if self.redis_client.hget(key, "worker_type") != "worker_cpu"]
+            gpu_workers = {
+                key: self.redis_client.hgetall(key)  # Obtiene el mapeo completo
+                for key in worker_keys
+                if self.redis_client.hget(key, "worker_type") != b"worker_cpu"  # Filtra por tipo GPU
+            }
             return gpu_workers
         except redis.RedisError as e:
             print(f"Error obteniendo workers GPU de Redis: {e}")
-            self.connect_to_redis()  # Try reconnecting and retry the operation
+            self.connect_to_redis()  # Reconectar e intentar nuevamente
             return self.get_active_workers_gpu()
 
     def get_active_workers_cpu(self):
-        """Obtener los workers CPU activos desde Redis."""
+        """Obtener los workers CPU activos desde Redis con su información."""
         try:
             worker_keys = self.redis_client.keys("workers:*")
-            cpu_workers = [key for key in worker_keys if self.redis_client.hget(key, "worker_type") == "worker_cpu"]
+            cpu_workers = {
+                key: self.redis_client.hgetall(key)  # Obtiene el mapeo completo
+                for key in worker_keys
+                if self.redis_client.hget(key, "worker_type") != b"worker_gpu"  # Filtra por tipo CPU
+            }
             return cpu_workers
         except redis.RedisError as e:
             print(f"Error obteniendo workers CPU de Redis: {e}")
-            self.connect_to_redis()  # Try reconnecting and retry the operation
+            self.connect_to_redis()  # Reconectar e intentar nuevamente
             return self.get_active_workers_cpu()
+
 
     def setex(self, key, ttl, value):
         """Set a key with a TTL (time-to-live)."""
