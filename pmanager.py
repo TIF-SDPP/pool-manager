@@ -8,6 +8,13 @@ import threading
 import time
 from kubernetes import client, config
 from kubernetes.client.rest import ApiException
+from dotenv import load_dotenv
+
+load_dotenv()
+
+
+rabbitmq_host = os.getenv("RABBITMQ_HOST")
+
 
 # Get the current script's directory
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -107,7 +114,7 @@ def connect_rabbitmq():
     while True:
         try:
             connection = pika.BlockingConnection(pika.ConnectionParameters(
-                host='service-rabbitmq.default.svc.cluster.local',
+                host=rabbitmq_host,
                 port=5672,
                 credentials=pika.PlainCredentials('guest', 'guest')
             ))

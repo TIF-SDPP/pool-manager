@@ -1,9 +1,15 @@
 import redis
 import time
 import json
+import os
+from dotenv import load_dotenv
 
 class RedisUtils:
-    def __init__(self, host='service-redis.default.svc.cluster.local', port=6379, db=0, password='eYVX7EwVmmxKPCDmwMtyKVge8oLd2t81'):
+    load_dotenv()
+
+    redis_host = os.getenv("REDIS_HOST")
+    redis_password = os.getenv("REDIS_PASSWORD")
+    def __init__(self, host=redis_host, port=6379, db=0, password=redis_password):
         """Initialize Redis connection with security and retry mechanism."""
         self.host = host
         self.port = port

@@ -3,3 +3,4 @@ pika
 flask-cors
 redis
 kubernetes
+python-dotenv
