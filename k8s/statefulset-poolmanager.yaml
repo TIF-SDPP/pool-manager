@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: poolmanager
+  namespace: default
+spec:
+  serviceName: "poolmanager"
+  replicas: 2  # Puedes aumentar según la carga
+  selector:
+    matchLabels:
+      app: poolmanager
+  template:
+    metadata:
+      labels:
+        app: poolmanager
+    spec:
+      containers:
+      - name: poolmanager
+        image: leoduville5/poolmanager:v23
+        imagePullPolicy: Always
+        resources:
+          requests:
+            memory: "100Mi"
+            cpu: "250m"
+          limits:
+            memory: "2048Mi"
+            cpu: "1000m"
+        env:
+        - name: "PORT"
+          value: "8080"
+        ports:
+        - containerPort: 8080
+        # livenessProbe:
+        #   httpGet:
+        #     path: /health
+        #     port: 8080
+        #   initialDelaySeconds: 5
+        #   periodSeconds: 10
+        # readinessProbe:
+        #   httpGet:
+        #     path: /ready
+        #     port: 8080
+        #   initialDelaySeconds: 5
+        #   periodSeconds: 5
+      tolerations:
+      - key: instance_type
+        operator: Equal
+        value: spot
+        effect: NoSchedule
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: team
+                operator: In
+                values:
+                - devops

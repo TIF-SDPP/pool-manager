@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rabbitmq-config
+data:
+  enabled_plugins: |
+    [rabbitmq_management,rabbitmq_peer_discovery_k8s].
+  rabbitmq.conf: |
+    cluster_formation.peer_discovery_backend  = rabbit_peer_discovery_k8s
+    cluster_formation.k8s.host = kubernetes.default.svc.cluster.local
+    cluster_formation.node_cleanup.only_log_warning = true
+    cluster_partition_handling = autoheal
+    queue_master_locator = min-masters
+    # total_memory_available_override_value = 4GB  # O el tamaño real de tu nodo
+    # vm_memory_high_watermark.relative = 0.7  # Usa hasta el 70% de la memoria disponible
