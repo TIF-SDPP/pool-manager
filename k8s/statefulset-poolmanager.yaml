@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
       - name: poolmanager
-        image: leoduville5/poolmanager:v23
+        image: leoduville5/poolmanager:v25
         imagePullPolicy: Always
         resources:
           requests:

@@ -151,7 +151,7 @@ def on_message_received(ch, method, properties, body):
     else:
         prefix = data['prefix']
 
-    for i in range(num_workers):
+    for i in range(escalar):
         task_data = {
             "id": data['id'],
             "transactions": data['transactions'],
