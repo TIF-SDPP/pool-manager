@@ -15,6 +15,9 @@ load_dotenv()
 
 rabbitmq_host = os.getenv("RABBITMQ_HOST")
 
+rabbitmq_connection = None
+rabbitmq_channel = None
+
 
 # Get the current script's directory
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -124,28 +127,22 @@ def connect_rabbitmq():
             time.sleep(5)
 
 def on_message_received(ch, method, properties, body):
+    global rabbitmq_channel
+    
     data = json.loads(body)
     print(f"Message {data} received")
 
-    # Obtener cantidad de workers activos
     num_workers = redis_utils.get_active_workers()
-    num_workers = max(num_workers, 1)  # Evitar división por cero
-
+    num_workers = max(num_workers, 1)
     print(f"Active workers: {num_workers}")
 
-    connection = connect_rabbitmq()
-    channel = connection.channel()
+    escalar = min(num_workers, 10)
 
-    escalar = 5
-
-    # Dividir el rango de números aleatorios según el escalar
     max_value = data['random_num_max']
     step = max_value // escalar
 
-    # Obtenemos los workers GPU activos
     workers_gpu = redis_utils.get_active_workers_gpu()
 
-    # Si no hay workers GPU, reducimos la complejidad del prefijo
     if len(workers_gpu) == 0:
         prefix = "000"
     else:
@@ -162,8 +159,8 @@ def on_message_received(ch, method, properties, body):
             "random_end": (i + 1) * step if i < escalar - 1 else max_value
         }
 
-        # Publicar la subtarea en RabbitMQ
-        channel.basic_publish(
+        # Publicar subtarea usando el canal global
+        rabbitmq_channel.basic_publish(
             exchange='workers_queue',
             routing_key='hash_task',
             body=json.dumps(task_data)
@@ -171,34 +168,37 @@ def on_message_received(ch, method, properties, body):
         print(f"Subtask {i+1}/{escalar} sent: {task_data['random_start']} - {task_data['random_end']}")
 
     ch.basic_ack(delivery_tag=method.delivery_tag)
-    connection.close()
 
 def run_flask():
     """Ejecuta Flask en un hilo separado."""
     app.run(host='0.0.0.0', port=8080, debug=True, use_reloader=False)
 
 def run_rabbitmq():
+
+    global rabbitmq_connection, rabbitmq_channel
     """Conecta a RabbitMQ y empieza a consumir mensajes."""
-    connection = connect_rabbitmq()
-    channel = connection.channel()
-    channel.exchange_declare(exchange='workers_queue', exchange_type='topic', durable=True)
-    channel.queue_declare(queue='challenge_queue', durable=True)
-    channel.queue_bind(exchange='block_challenge', queue='challenge_queue', routing_key='blocks')
+    rabbitmq_connection = connect_rabbitmq()
+    rabbitmq_channel = rabbitmq_connection.channel()
+    rabbitmq_channel.exchange_declare(exchange='workers_queue', exchange_type='topic', durable=True)
+    rabbitmq_channel.queue_declare(queue='challenge_queue', durable=True)
+    rabbitmq_channel.queue_bind(exchange='block_challenge', queue='challenge_queue', routing_key='blocks')
     
     while True:
         try:
-            channel.basic_consume(queue='challenge_queue', on_message_callback=on_message_received, auto_ack=False)
+            rabbitmq_channel.basic_consume(queue='challenge_queue', on_message_callback=on_message_received, auto_ack=False)
             print('Waiting for messages. To exit press CTRL+C')
-            channel.start_consuming()
+            rabbitmq_channel.start_consuming()
         except pika.exceptions.AMQPConnectionError as e:
             print(f"Error de conexión con RabbitMQ: {e}. Intentando reconectar...")
-            connection.close()
+            if rabbitmq_connection:
+                rabbitmq_connection.close()
+            rabbitmq_connection.close()
             time.sleep(5)  # Esperar antes de reconectar
-            connection = connect_rabbitmq()
-            channel = connection.channel()
+            rabbitmq_connection = connect_rabbitmq()
+            rabbitmq_channel = rabbitmq_connection.channel()
         except KeyboardInterrupt:
             print("Consumo detenido por el usuario.")
-            connection.close()
+            rabbitmq_connection.close()
             print("Conexión cerrada.")
             break
 
