@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
       - name: poolmanager
-        image: leoduville5/poolmanager:v25
+        image: leoduville5/poolmanager:v26
         imagePullPolicy: Always
         resources:
           requests:
@@ -47,12 +47,12 @@ spec:
         operator: Equal
         value: spot
         effect: NoSchedule
-      affinity:
-        nodeAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
-            nodeSelectorTerms:
-            - matchExpressions:
-              - key: team
-                operator: In
-                values:
-                - devops
+      # affinity:
+      #   nodeAffinity:
+      #     requiredDuringSchedulingIgnoredDuringExecution:
+      #       nodeSelectorTerms:
+      #       - matchExpressions:
+      #         - key: team
+      #           operator: In
+      #           values:
+      #           - devops
