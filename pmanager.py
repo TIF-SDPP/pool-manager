@@ -141,18 +141,11 @@ def on_message_received(ch, method, properties, body):
     max_value = data['random_num_max']
     step = max_value // escalar
 
-    workers_gpu = redis_utils.get_active_workers_gpu()
-
-    if len(workers_gpu) == 0:
-        prefix = "000"
-    else:
-        prefix = data['prefix']
-
     for i in range(escalar):
         task_data = {
             "id": data['id'],
             "transactions": data['transactions'],
-            "prefix": prefix,
+            "prefix": data["prefix"],
             "base_string_chain": data['base_string_chain'],
             "blockchain_content": data['blockchain_content'],
             "random_start": i * step,
