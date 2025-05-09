@@ -12,12 +12,10 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-
 rabbitmq_host = os.getenv("RABBITMQ_HOST")
 
 rabbitmq_connection = None
 rabbitmq_channel = None
-
 
 # Get the current script's directory
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -30,8 +28,10 @@ sys.path.append(parent_dir)
 from redis_utils import RedisUtils
 redis_utils = RedisUtils()
 
-# Numero minimo de workers activos
-MIN_WORKERS_COUNT = 5
+# Numero minimo de workers CPU activos
+MIN_WORKERS_COUNT = 1
+# Numero maximo de workers CPU activos
+MAX_WORKERS_COUNT = 10
 
 # --- APP side --- 
 app = Flask(__name__)
@@ -49,6 +49,11 @@ def actualizar_replicas_en_kubernetes(deployment_name, namespace, replicas):
         # Intentar obtener el Deployment
         deployment = v1_apps.read_namespaced_deployment(deployment_name, namespace)
         
+        current_replicas = deployment.spec.replicas
+        if current_replicas == replicas:
+            print(f"✅ No se necesita escalar. Réplicas actuales: {current_replicas}")
+            return
+
         # Si se obtiene, actualizar el número de réplicas
         deployment.spec.replicas = replicas
         
@@ -70,23 +75,29 @@ def actualizar_replicas_en_kubernetes(deployment_name, namespace, replicas):
 
 # Función principal que se ejecuta cada X segundos
 def ejecutar_periodicamente(deployment_name, namespace, intervalo_segundos):
+    
     while True:
-
         # Obtenemos los workers GPU activos
         workers_gpu = redis_utils.get_active_workers_gpu()
         print("Workers GPU: ", workers_gpu)
+        try:
+            pending_tasks = get_pending_tasks()
+        except Exception as e:
+            print("Redis no responde, usando fallback...")
+            pending_tasks = 5  # fallback temporal
 
-        # Si hay menos del mínimo requerido, escalar
-        if len(workers_gpu) == 0:
-            if len(redis_utils.get_active_workers_cpu()) < 5:
-                print("Workers CPU", len(redis_utils.get_active_workers_cpu()))
-                actualizar_replicas_en_kubernetes(deployment_name, namespace, MIN_WORKERS_COUNT)
-            else:
-                print("Numero de workers CPU: OK")
+        if len(workers_gpu) > 0:
+                # Si hay workers GPU activos, apagamos los CPU
+                actualizar_replicas_en_kubernetes(deployment_name, namespace, 0)
         else:
-            print("Workers GPU else: ", workers_gpu)
-            print("Workers CPU else: ", len(redis_utils.get_active_workers_cpu()))
-            actualizar_replicas_en_kubernetes(deployment_name, namespace, 0)
+            if pending_tasks == 0:
+                # Escalar al mínimo solo si no hay tareas
+                desired_replicas = MIN_WORKERS_COUNT
+            else:
+                # Ajustar proporcionalmente, por ejemplo, 1 worker cada 5 tareas (ajustable)
+                desired_replicas = min(max(pending_tasks // 5, MIN_WORKERS_COUNT), MAX_WORKERS_COUNT)  # Límite superior opcional
+
+            actualizar_replicas_en_kubernetes(deployment_name, namespace, desired_replicas)
 
         print(f"⏳ Esperando {intervalo_segundos} segundos para la próxima verificación...")
         time.sleep(intervalo_segundos)
@@ -162,6 +173,14 @@ def on_message_received(ch, method, properties, body):
 
     ch.basic_ack(delivery_tag=method.delivery_tag)
 
+@app.route("/status")
+def status():
+    return jsonify({
+        "pending_tasks": get_pending_tasks(),
+        "workers_cpu": redis_utils.get_active_workers_cpu(),
+        "workers_gpu": redis_utils.get_active_workers_gpu(),
+    })
+
 def run_flask():
     """Ejecuta Flask en un hilo separado."""
     app.run(host='0.0.0.0', port=8080, debug=True, use_reloader=False)
@@ -194,6 +213,10 @@ def run_rabbitmq():
             rabbitmq_connection.close()
             print("Conexión cerrada.")
             break
+
+def get_pending_tasks():
+    queue = rabbitmq_channel.queue_declare(queue='workers_queue', passive=True)
+    return queue.method.message_count
 
 if __name__ == '__main__':
     flask_thread = threading.Thread(target=run_flask, daemon=True)

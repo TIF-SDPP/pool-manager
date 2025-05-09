@@ -39,7 +39,7 @@ class RedisUtils:
             self.redis_client.lpush(list_key, message_json)
         except redis.RedisError as e:
             print(f"Error al publicar mensaje en Redis: {e}")
-            self.connect_to_redis()  # Try reconnecting and retry the operation
+            self._connect()  # Try reconnecting and retry the operation
             self.post_message(message, list_key)
 
     def get_recent_messages(self, list_key='blockchain', count=10):
@@ -49,7 +49,7 @@ class RedisUtils:
             return [json.loads(msg) for msg in messages_json]
         except redis.RedisError as e:
             print(f"Error al obtener mensajes de Redis: {e}")
-            self.connect_to_redis()  # Try reconnecting and retry the operation
+            self._connect()  # Try reconnecting and retry the operation
             return self.get_recent_messages(list_key, count)
 
     def get_active_workers(self, prefix="workers:*"):
@@ -59,7 +59,7 @@ class RedisUtils:
             return len(keys)  # Retornamos la cantidad de workers activos
         except redis.RedisError as e:
             print(f"Error obteniendo workers activos de Redis: {e}")
-            self.connect_to_redis()  # Try reconnecting and retry the operation
+            self._connect()  # Try reconnecting and retry the operation
             return self.get_active_workers(prefix)
 
     def get_active_workers_gpu(self):
@@ -74,7 +74,7 @@ class RedisUtils:
             return gpu_workers
         except redis.RedisError as e:
             print(f"Error obteniendo workers GPU de Redis: {e}")
-            self.connect_to_redis()  # Reconectar e intentar nuevamente
+            self._connect()  # Reconectar e intentar nuevamente
             return self.get_active_workers_gpu()
 
     def get_active_workers_cpu(self):
@@ -89,7 +89,7 @@ class RedisUtils:
             return cpu_workers
         except redis.RedisError as e:
             print(f"Error obteniendo workers CPU de Redis: {e}")
-            self.connect_to_redis()  # Reconectar e intentar nuevamente
+            self._connect()  # Reconectar e intentar nuevamente
             return self.get_active_workers_cpu()
 
 
@@ -99,7 +99,7 @@ class RedisUtils:
             return self.redis_client.setex(key, ttl, value)
         except redis.RedisError as e:
             print(f"Error al establecer clave en Redis: {e}")
-            self.connect_to_redis()  # Try reconnecting and retry the operation
+            self._connect()  # Try reconnecting and retry the operation
             return self.setex(key, ttl, value)
 
     def actualizar_worker(self, worker_id, worker_type):
@@ -109,5 +109,6 @@ class RedisUtils:
             self.redis_client.expire(f"workers:{worker_id}", 30)
         except redis.RedisError as e:
             print(f"Error al actualizar worker en Redis: {e}")
-            self.connect_to_redis()  # Try reconnecting and retry the operation
+            self._connect()  # Try reconnecting and retry the operation
             self.actualizar_worker(worker_id, worker_type)
+
