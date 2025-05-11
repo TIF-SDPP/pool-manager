@@ -9,4 +9,4 @@ kubectl apply -f ./headless-poolmanager.yaml
 kubectl apply -f ./statefulset-poolmanager.yaml
 
 # Aplicar el archivo de configuración de Kubernetes
-kubectl apply -f ./service-poolmanager.yaml
+#kubectl apply -f ./service-poolmanager.yaml

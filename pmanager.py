@@ -12,7 +12,10 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-rabbitmq_host = os.getenv("RABBITMQ_HOST")
+RABBITMQ_HOST = os.getenv("RABBITMQ_HOST")
+RABBITMQ_USER = os.getenv("RABBITMQ_USER")
+RABBITMQ_PASS = os.getenv("RABBITMQ_PASS")
+RABBITMQ_PORT = os.getenv("RABBITMQ_PORT")
 
 rabbitmq_connection = None
 rabbitmq_channel = None
@@ -128,9 +131,9 @@ def connect_rabbitmq():
     while True:
         try:
             connection = pika.BlockingConnection(pika.ConnectionParameters(
-                host=rabbitmq_host,
-                port=5672,
-                credentials=pika.PlainCredentials('guest', 'guest')
+                host=RABBITMQ_HOST,
+                port=RABBITMQ_PORT,
+                credentials=pika.PlainCredentials(RABBITMQ_USER, RABBITMQ_PASS)
             ))
             return connection
         except pika.exceptions.AMQPConnectionError:
@@ -208,11 +211,24 @@ def run_rabbitmq():
             time.sleep(5)  # Esperar antes de reconectar
             rabbitmq_connection = connect_rabbitmq()
             rabbitmq_channel = rabbitmq_connection.channel()
-        except KeyboardInterrupt:
-            print("Consumo detenido por el usuario.")
-            rabbitmq_connection.close()
-            print("Conexión cerrada.")
-            break
+        except pika.exceptions.AMQPConnectionError as e:
+            print(f"⚠️ Error de conexión con RabbitMQ: {e}. Intentando reconectar...")
+            try:
+                if rabbitmq_connection and not rabbitmq_connection.is_closed:
+                    rabbitmq_connection.close()
+            except Exception as close_error:
+                print(f"Error al cerrar la conexión: {close_error}")
+            
+            time.sleep(5)  # Esperar antes de reconectar
+            reconnect()
+
+def reconnect():
+    global rabbitmq_connection, rabbitmq_channel
+    rabbitmq_connection = connect_rabbitmq()
+    rabbitmq_channel = rabbitmq_connection.channel()
+    rabbitmq_channel.exchange_declare(exchange='workers_queue', exchange_type='topic', durable=True)
+    rabbitmq_channel.queue_declare(queue='challenge_queue', durable=True)
+    rabbitmq_channel.queue_bind(exchange='block_challenge', queue='challenge_queue', routing_key='blocks')
 
 def get_pending_tasks():
     queue = rabbitmq_channel.queue_declare(queue='workers_queue', passive=True)
