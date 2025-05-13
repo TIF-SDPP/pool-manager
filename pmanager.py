@@ -86,9 +86,9 @@ def ejecutar_periodicamente(deployment_name, namespace, intervalo_segundos):
         try:
             pending_tasks = get_pending_tasks()
         except Exception as e:
-            print("Redis no responde, usando fallback...")
-            pending_tasks = 5  # fallback temporal
-
+            print(f"Error en comunicación con Redis: {e}.")
+            #reconnect()
+            
         if len(workers_gpu) > 0:
                 # Si hay workers GPU activos, apagamos los CPU
                 actualizar_replicas_en_kubernetes(deployment_name, namespace, 0)
@@ -189,38 +189,35 @@ def run_flask():
     app.run(host='0.0.0.0', port=8080, debug=True, use_reloader=False)
 
 def run_rabbitmq():
-
     global rabbitmq_connection, rabbitmq_channel
-    """Conecta a RabbitMQ y empieza a consumir mensajes."""
-    rabbitmq_connection = connect_rabbitmq()
-    rabbitmq_channel = rabbitmq_connection.channel()
-    rabbitmq_channel.exchange_declare(exchange='workers_queue', exchange_type='topic', durable=True)
-    rabbitmq_channel.queue_declare(queue='challenge_queue', durable=True)
-    rabbitmq_channel.queue_bind(exchange='block_challenge', queue='challenge_queue', routing_key='blocks')
-    
+
     while True:
         try:
-            rabbitmq_channel.basic_consume(queue='challenge_queue', on_message_callback=on_message_received, auto_ack=False)
-            print('Waiting for messages. To exit press CTRL+C')
-            rabbitmq_channel.start_consuming()
-        except pika.exceptions.AMQPConnectionError as e:
-            print(f"Error de conexión con RabbitMQ: {e}. Intentando reconectar...")
-            if rabbitmq_connection:
-                rabbitmq_connection.close()
-            rabbitmq_connection.close()
-            time.sleep(5)  # Esperar antes de reconectar
+            print("🔄 Intentando conectar a RabbitMQ...")
             rabbitmq_connection = connect_rabbitmq()
             rabbitmq_channel = rabbitmq_connection.channel()
-        except pika.exceptions.AMQPConnectionError as e:
-            print(f"⚠️ Error de conexión con RabbitMQ: {e}. Intentando reconectar...")
+            
+            rabbitmq_channel.exchange_declare(exchange='block_challenge', exchange_type='topic', durable=True)
+            rabbitmq_channel.queue_declare(queue='challenge_queue', durable=True)
+            rabbitmq_channel.queue_bind(exchange='block_challenge', queue='challenge_queue', routing_key='blocks')
+
+            rabbitmq_channel.basic_consume(queue='challenge_queue', on_message_callback=on_message_received, auto_ack=False)
+            print('✅ Esperando mensajes. Para salir presiona CTRL+C')
+            rabbitmq_channel.start_consuming()
+
+        except (pika.exceptions.AMQPConnectionError, pika.exceptions.StreamLostError, IndexError) as e:
+            print(f"⚠️ Error de conexión con RabbitMQ: {e}. Intentando reconectar en 5s...")
             try:
-                if rabbitmq_connection and not rabbitmq_connection.is_closed:
+                if rabbitmq_connection and rabbitmq_connection.is_open:
                     rabbitmq_connection.close()
             except Exception as close_error:
                 print(f"Error al cerrar la conexión: {close_error}")
             
-            time.sleep(5)  # Esperar antes de reconectar
-            reconnect()
+            time.sleep(5)
+
+        except Exception as e:
+            print(f"❌ Error inesperado: {e}")
+            time.sleep(5)
 
 def reconnect():
     global rabbitmq_connection, rabbitmq_channel
@@ -231,8 +228,15 @@ def reconnect():
     rabbitmq_channel.queue_bind(exchange='block_challenge', queue='challenge_queue', routing_key='blocks')
 
 def get_pending_tasks():
-    queue = rabbitmq_channel.queue_declare(queue='workers_queue', passive=True)
-    return queue.method.message_count
+    try:
+        connection = connect_rabbitmq()
+        channel = connection.channel()
+        queue = channel.queue_declare(queue='workers_queue', passive=True)
+        connection.close()
+        return queue.method.message_count
+    except Exception as e:
+        print(f"❌ Error al obtener tareas pendientes: {e}")
+        return 0
 
 if __name__ == '__main__':
     flask_thread = threading.Thread(target=run_flask, daemon=True)
