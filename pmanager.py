@@ -196,12 +196,17 @@ def run_rabbitmq():
             print("🔄 Intentando conectar a RabbitMQ...")
             rabbitmq_connection = connect_rabbitmq()
             rabbitmq_channel = rabbitmq_connection.channel()
-            
-            rabbitmq_channel.exchange_declare(exchange='block_challenge', exchange_type='topic', durable=True)
-            rabbitmq_channel.queue_declare(queue='challenge_queue', durable=True)
-            rabbitmq_channel.queue_bind(exchange='block_challenge', queue='challenge_queue', routing_key='blocks')
+            rabbitmq_channel.exchange_declare(exchange='workers_queue', exchange_type='topic', durable=True)
 
-            rabbitmq_channel.basic_consume(queue='challenge_queue', on_message_callback=on_message_received, auto_ack=False)
+            # rabbitmq_channel.exchange_declare(exchange='block_challenge', exchange_type='topic', durable=True)
+            # rabbitmq_channel.queue_declare(queue='challenge_queue', durable=True)
+            # rabbitmq_channel.queue_bind(exchange='block_challenge', queue='challenge_queue', routing_key='blocks')
+
+            # rabbitmq_channel.basic_consume(queue='challenge_queue', on_message_callback=on_message_received, auto_ack=False)
+            rabbitmq_channel.queue_declare(queue='block_challenge')
+
+            rabbitmq_channel.basic_consume(queue='block_challenge', on_message_callback=on_message_received, auto_ack=False)
+
             print('✅ Esperando mensajes. Para salir presiona CTRL+C')
             rabbitmq_channel.start_consuming()
 
@@ -224,8 +229,10 @@ def reconnect():
     rabbitmq_connection = connect_rabbitmq()
     rabbitmq_channel = rabbitmq_connection.channel()
     rabbitmq_channel.exchange_declare(exchange='workers_queue', exchange_type='topic', durable=True)
-    rabbitmq_channel.queue_declare(queue='challenge_queue', durable=True)
-    rabbitmq_channel.queue_bind(exchange='block_challenge', queue='challenge_queue', routing_key='blocks')
+    # rabbitmq_channel.queue_declare(queue='challenge_queue', durable=True)
+    # rabbitmq_channel.queue_bind(exchange='block_challenge', queue='challenge_queue', routing_key='blocks')
+    rabbitmq_channel.queue_declare(queue='block_challenge', durable=True)
+    rabbitmq_channel.basic_consume(queue='block_challenge', on_message_callback=on_message_received, auto_ack=False)
 
 def get_pending_tasks():
     try:
