@@ -27,7 +27,7 @@ jobs:
       with:
         context: .
         push: true
-        tags: leoduville5/poolmanager:latest
+        tags: leoduville5/poolmanager:v33
 
     - name: Authenticate to Google Cloud
       uses: google-github-actions/auth@v2
@@ -40,6 +40,12 @@ jobs:
         cluster_name: ${{ secrets.YOUR_CLUSTER_NAME }}
         location: ${{ secrets.YOUR_CLUSTER_LOCATION }}  # zona o región, ej. us-central1
         project_id: ${{secrets.YOUR_PROJECT_ID}}
+    - name: Create Kubernetes Secret for Pool-Manager
+      run: |
+        kubectl create secret generic poolmanger-secrets \
+          --from-literal=REDIS_PASSWORD=${{ secrets.REDIS_PASSWORD }} \
+          --from-literal=RABBITMQ_PASS=${{ secrets.RABBITMQ_PASS }} \
+          --dry-run=client -o yaml | kubectl apply -f -
 
     - name: Deploy to Kubernetes
       run: |
