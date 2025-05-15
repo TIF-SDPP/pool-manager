@@ -42,7 +42,7 @@ jobs:
         project_id: ${{secrets.YOUR_PROJECT_ID}}
     - name: Create Kubernetes Secret for Pool-Manager
       run: |
-        kubectl create secret generic poolmanger-secrets \
+        kubectl create secret generic poolmanager-secrets \
           --from-literal=REDIS_PASSWORD=${{ secrets.REDIS_PASSWORD }} \
           --from-literal=RABBITMQ_PASS=${{ secrets.RABBITMQ_PASS }} \
           --dry-run=client -o yaml | kubectl apply -f -
