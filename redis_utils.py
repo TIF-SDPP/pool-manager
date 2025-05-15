@@ -9,6 +9,7 @@ class RedisUtils:
 
     redis_host = os.getenv("REDIS_HOST")
     redis_password = os.getenv("REDIS_PASSWORD")
+    print(redis_password)
     def __init__(self, host=redis_host, port=6379, db=0, password=redis_password):
         """Initialize Redis connection with security and retry mechanism."""
         self.host = host
