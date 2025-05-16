@@ -40,6 +40,7 @@ sys.path.append(parent_dir)
 from redis_utils import RedisUtils
 
 redis_master = None
+current_master_host = None
 
 redis_utils = RedisUtils()
 
@@ -85,7 +86,8 @@ def ejecutar_periodicamente(deployment_name, namespace, intervalo_segundos):
         except Exception as e:
             print(f"Error en comunicación con Redis: {e}.")
 
-            
+        print("Número de tareas pendientes: ", pending_tasks)
+
         if len(workers_gpu) > 0:
                 actualizar_replicas_en_kubernetes(deployment_name, namespace, 0)
         else:
@@ -93,6 +95,9 @@ def ejecutar_periodicamente(deployment_name, namespace, intervalo_segundos):
                 desired_replicas = MIN_WORKERS_COUNT
             else:
                 desired_replicas = min(max(pending_tasks // PENDING_TASK_DIVISOR, MIN_WORKERS_COUNT), MAX_WORKERS_COUNT)  # Límite superior opcional
+
+            print(f"→ Calculando replicas: pending_tasks={pending_tasks}, divisor={PENDING_TASK_DIVISOR}, min={MIN_WORKERS_COUNT}, max={MAX_WORKERS_COUNT}")
+            print(f"→ desired_replicas={desired_replicas}")
 
             actualizar_replicas_en_kubernetes(deployment_name, namespace, desired_replicas)
 
@@ -225,23 +230,27 @@ def reconnect():
 def consultar_maestro():
 
     global redis_master
-    
-    # Lista de tuplas (host, puerto) de los Sentinels
+    global current_master_host
+
     sentinels = [
         ('redis-sentinel-0.service-redis-sentinel.default.svc.cluster.local', 26379),
         ('redis-sentinel-1.service-redis-sentinel.default.svc.cluster.local', 26379),
         ('redis-sentinel-2.service-redis-sentinel.default.svc.cluster.local', 26379),
     ]
 
-    # Conectar al Sentinel
     sentinel = Sentinel(sentinels, socket_timeout=0.1)
-
     master_address = sentinel.discover_master('mymaster')
+    host_master = master_address[0]
 
-    print(f"Master: {master_address[0]}:{master_address[1]}")
+    print(f"Master: {host_master}:{master_address[1]}")
 
-    host_master = master_address[0].split(":")[0]
+    if host_master == current_master_host:
+        print("El master no cambió, no se vuelve a crear el objeto Redis.")
+        return  # No hace falta recrear el objeto
 
+    # Si cambió el master
+    print("Cambiando conexión al nuevo master.")
+    current_master_host = host_master
     redis_master = RedisUtils(host=host_master)
 
 def get_pending_tasks():
