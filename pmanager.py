@@ -257,7 +257,7 @@ def get_pending_tasks():
     try:
         connection = connect_rabbitmq()
         channel = connection.channel()
-        queue = channel.queue_declare(queue='workers_queue', passive=True)
+        queue = channel.queue_declare(queue='workers_queue', durable=True)
         connection.close()
         return queue.method.message_count
     except Exception as e:
