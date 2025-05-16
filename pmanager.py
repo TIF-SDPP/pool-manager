@@ -154,7 +154,7 @@ def on_message_received(ch, method, properties, body):
     workers_cpu = redis_utils.get_active_workers_cpu()
 
     if (workers_cpu > 0):
-        if (len(data["prefix"]) > PREFIX_WORKERS_CPU):
+        if (len(data.get("prefix")) > PREFIX_WORKERS_CPU):
             data["prefix"] = "00000"
 
     for i in range(escalar):
