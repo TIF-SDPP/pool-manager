@@ -193,7 +193,7 @@ def run_rabbitmq():
             rabbitmq_channel = rabbitmq_connection.channel()
             rabbitmq_channel.queue_declare(queue='workers_queue', durable=True)
             rabbitmq_channel.exchange_declare(exchange='workers_queue', exchange_type='topic', durable=True)
-            rabbitmq_channel.queue_declare(queue='block_challenge')
+            rabbitmq_channel.queue_declare(queue='block_challenge', durable=True)
             rabbitmq_channel.basic_consume(queue='block_challenge', on_message_callback=on_message_received, auto_ack=False)
 
             print('✅ Esperando mensajes. Para salir presiona CTRL+C')
