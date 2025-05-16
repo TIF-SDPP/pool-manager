@@ -153,7 +153,7 @@ def on_message_received(ch, method, properties, body):
 
     workers_cpu = redis_utils.get_active_workers_cpu()
 
-    if (workers_cpu > 0):
+    if (len(workers_cpu) > 0):
         
         prefix_length = len(data.get("prefix"))
         print(prefix_length)
