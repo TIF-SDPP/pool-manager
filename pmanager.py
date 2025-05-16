@@ -9,6 +9,7 @@ import time
 from kubernetes import client, config
 from kubernetes.client.rest import ApiException
 from dotenv import load_dotenv
+from redis.sentinel import Sentinel
 
 load_dotenv()
 
@@ -37,14 +38,13 @@ print("Parent Directory:", parent_dir)
 sys.path.append(parent_dir)
 
 from redis_utils import RedisUtils
+
+redis_master = None
+
 redis_utils = RedisUtils()
-
-
-
 
 app = Flask(__name__)
 CORS(app)
-
 
 def actualizar_replicas_en_kubernetes(deployment_name, namespace, replicas):
     try:
@@ -106,16 +106,18 @@ def check_status():
     is_user = data.get("worker_user") == "true"  
     worker_type = data.get("worker_type")
 
+    consultar_maestro()
+
     if not worker_id:
         return jsonify({'error': 'Missing worker_id'}), 400
 
-    redis_utils.actualizar_worker(worker_id, worker_type)
+    redis_master.actualizar_worker(worker_id, worker_type)
 
 
     if not is_user:
-        redis_utils.setex(f"workers_cloud:{worker_id}", 30, "alive")
+        redis_master.setex(f"workers_cloud:{worker_id}", 30, "alive")
     else:
-        redis_utils.setex(f"workers_local:{worker_id}", 30, "alive")
+        redis_master.setex(f"workers_local:{worker_id}", 30, "alive")
 
     print(f"Worker {worker_id} registered. Local: {is_user}")
     return jsonify({'status': 'OK'})
@@ -219,6 +221,28 @@ def reconnect():
     rabbitmq_channel.exchange_declare(exchange='workers_queue', exchange_type='topic', durable=True)
     rabbitmq_channel.queue_declare(queue='block_challenge', durable=True)
     rabbitmq_channel.basic_consume(queue='block_challenge', on_message_callback=on_message_received, auto_ack=False)
+
+def consultar_maestro():
+
+    global redis_master
+    
+    # Lista de tuplas (host, puerto) de los Sentinels
+    sentinels = [
+        ('redis-sentinel-0.service-redis-sentinel.default.svc.cluster.local', 26379),
+        ('redis-sentinel-1.service-redis-sentinel.default.svc.cluster.local', 26379),
+        ('redis-sentinel-2.service-redis-sentinel.default.svc.cluster.local', 26379),
+    ]
+
+    # Conectar al Sentinel
+    sentinel = Sentinel(sentinels, socket_timeout=0.1)
+
+    master_address = sentinel.discover_master('mymaster')
+
+    print(f"Master: {master_address[0]}:{master_address[1]}")
+
+    host_master = master_address[0].split(":")[0]
+
+    redis_master = RedisUtils(host=host_master)
 
 def get_pending_tasks():
     try:
