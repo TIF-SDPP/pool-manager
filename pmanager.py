@@ -16,13 +16,21 @@ RABBITMQ_HOST = os.getenv("RABBITMQ_HOST")
 RABBITMQ_USER = os.getenv("RABBITMQ_USER")
 RABBITMQ_PASS = os.getenv("RABBITMQ_PASS")
 RABBITMQ_PORT = os.getenv("RABBITMQ_PORT")
+# MIN_WORKERS_COUNT = int(os.getenv("MIN_WORKERS_COUNT", 1)) 
+# MAX_WORKERS_COUNT = int(os.getenv("MAX_WORKERS_COUNT", 10))
+# PENDING_TASK_DIVISOR = int(os.getenv("PENDING_TASK_DIVISOR", 5))
+MIN_WORKERS_COUNT = 1
+MAX_WORKERS_COUNT = 10
+PENDING_TASK_DIVISOR = 5
+
+
+
 
 rabbitmq_connection = None
 rabbitmq_channel = None
 
-# Get the current script's directory
+
 current_dir = os.path.dirname(os.path.abspath(__file__))
-# Get the parent directory
 parent_dir = os.path.dirname(current_dir)
 
 print("Parent Directory:", parent_dir)
@@ -31,22 +39,19 @@ sys.path.append(parent_dir)
 from redis_utils import RedisUtils
 redis_utils = RedisUtils()
 
-# Numero minimo de workers CPU activos
-MIN_WORKERS_COUNT = 1
-# Numero maximo de workers CPU activos
-MAX_WORKERS_COUNT = 10
 
-# --- APP side --- 
+
+
 app = Flask(__name__)
 CORS(app)
 
-# Función que actualiza las réplicas en el Deployment
+
 def actualizar_replicas_en_kubernetes(deployment_name, namespace, replicas):
     try:
         # Después (esto funciona dentro del cluster de Kubernetes)
         config.load_incluster_config()
         
-        # Crear el cliente de la API de Kubernetes
+
         v1_apps = client.AppsV1Api()
         
         # Intentar obtener el Deployment
@@ -57,48 +62,37 @@ def actualizar_replicas_en_kubernetes(deployment_name, namespace, replicas):
             print(f"✅ No se necesita escalar. Réplicas actuales: {current_replicas}")
             return
 
-        # Si se obtiene, actualizar el número de réplicas
         deployment.spec.replicas = replicas
         
-        # Aplicar el cambio
         v1_apps.replace_namespaced_deployment(deployment_name, namespace, deployment)
         print(f"El número de réplicas de {deployment_name} en el namespace {namespace} ha sido actualizado a {replicas}.")
     
     except ApiException as e:
         if e.status == 404:
-            # Si el Deployment no existe, puedes hacer algo aquí, por ejemplo:
             print(f"El Deployment {deployment_name} no existe en el namespace {namespace}. Intentando crear uno nuevo...")
             
-            # Aquí iría la lógica para crear el Deployment si lo deseas, por ejemplo:
-            # Crear un Deployment por defecto o algún comportamiento según el caso.
-            # Esto lo puedes implementar dependiendo de tus necesidades.
         else:
-            # Si ocurre otro tipo de error, lo reportamos.
             print(f"Ocurrió un error inesperado al intentar actualizar el Deployment: {e}")
 
-# Función principal que se ejecuta cada X segundos
+
 def ejecutar_periodicamente(deployment_name, namespace, intervalo_segundos):
     
     while True:
-        # Obtenemos los workers GPU activos
         workers_gpu = redis_utils.get_active_workers_gpu()
         print("Workers GPU: ", workers_gpu)
         try:
             pending_tasks = get_pending_tasks()
         except Exception as e:
             print(f"Error en comunicación con Redis: {e}.")
-            #reconnect()
+
             
         if len(workers_gpu) > 0:
-                # Si hay workers GPU activos, apagamos los CPU
                 actualizar_replicas_en_kubernetes(deployment_name, namespace, 0)
         else:
             if pending_tasks == 0:
-                # Escalar al mínimo solo si no hay tareas
                 desired_replicas = MIN_WORKERS_COUNT
             else:
-                # Ajustar proporcionalmente, por ejemplo, 1 worker cada 5 tareas (ajustable)
-                desired_replicas = min(max(pending_tasks // 5, MIN_WORKERS_COUNT), MAX_WORKERS_COUNT)  # Límite superior opcional
+                desired_replicas = min(max(pending_tasks // PENDING_TASK_DIVISOR, MIN_WORKERS_COUNT), MAX_WORKERS_COUNT)  # Límite superior opcional
 
             actualizar_replicas_en_kubernetes(deployment_name, namespace, desired_replicas)
 
@@ -109,16 +103,15 @@ def ejecutar_periodicamente(deployment_name, namespace, intervalo_segundos):
 def check_status():
     data = request.get_json()
     worker_id = data.get("worker_id")  
-    is_user = data.get("worker_user") == "true"  # Convertir a booleano
+    is_user = data.get("worker_user") == "true"  
     worker_type = data.get("worker_type")
 
     if not worker_id:
         return jsonify({'error': 'Missing worker_id'}), 400
 
-    # Guardar o actualizar el worker con TTL de 30s
     redis_utils.actualizar_worker(worker_id, worker_type)
 
-    # Guardar la categoría (nube/local)
+
     if not is_user:
         redis_utils.setex(f"workers_cloud:{worker_id}", 30, "alive")
     else:
@@ -242,15 +235,16 @@ if __name__ == '__main__':
     flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
 
-    deployment_name = "deployment-worker"  # Nombre de tu Deployment
-    namespace = "default"  # Namespace donde está el Deployment
-    intervalo_segundos = 30  # Intervalo en segundos entre cada actualización
+    deployment_name = "deployment-worker"  
+    namespace = "default" 
+    intervalo_segundos = 30  
 
     # Iniciar la función periódica en un hilo separado
     update_thread = threading.Thread(target=ejecutar_periodicamente, args=(deployment_name, namespace, intervalo_segundos), daemon=True)
     update_thread.start()
-
-    run_rabbitmq()  # Mantiene el hilo principal bloqueado con RabbitMQ
+    
+    # Mantiene el hilo principal bloqueado con RabbitMQ
+    run_rabbitmq() 
 
 
 
