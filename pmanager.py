@@ -246,7 +246,7 @@ def consultar_maestro():
 
     if host_master == current_master_host:
         print("El master no cambió, no se vuelve a crear el objeto Redis.")
-        return  # No hace falta recrear el objeto
+        return
 
     # Si cambió el master
     print("Cambiando conexión al nuevo master.")
