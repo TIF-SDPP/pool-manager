@@ -17,19 +17,17 @@ RABBITMQ_HOST = os.getenv("RABBITMQ_HOST")
 RABBITMQ_USER = os.getenv("RABBITMQ_USER")
 RABBITMQ_PASS = os.getenv("RABBITMQ_PASS")
 RABBITMQ_PORT = os.getenv("RABBITMQ_PORT")
-# MIN_WORKERS_COUNT = int(os.getenv("MIN_WORKERS_COUNT", 1)) 
-# MAX_WORKERS_COUNT = int(os.getenv("MAX_WORKERS_COUNT", 10))
-# PENDING_TASK_DIVISOR = int(os.getenv("PENDING_TASK_DIVISOR", 5))
+SENTINEL0_HOST = os.getenv("SENTINEL0_HOST")
+SENTINEL1_HOST = os.getenv("SENTINEL1_HOST")
+SENTINEL2_HOST = os.getenv("SENTINEL2_HOST")
+SENTINEL_PORT = os.getenv("SENTINEL_PORT")
+
 MIN_WORKERS_COUNT = 1
 MAX_WORKERS_COUNT = 10
 PENDING_TASK_DIVISOR = 5
 
-
-
-
 rabbitmq_connection = None
 rabbitmq_channel = None
-
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(current_dir)
@@ -49,10 +47,10 @@ CORS(app)
 
 def actualizar_replicas_en_kubernetes(deployment_name, namespace, replicas):
     try:
+
         # Después (esto funciona dentro del cluster de Kubernetes)
         config.load_incluster_config()
         
-
         v1_apps = client.AppsV1Api()
         
         # Intentar obtener el Deployment
@@ -70,11 +68,9 @@ def actualizar_replicas_en_kubernetes(deployment_name, namespace, replicas):
     
     except ApiException as e:
         if e.status == 404:
-            print(f"El Deployment {deployment_name} no existe en el namespace {namespace}. Intentando crear uno nuevo...")
-            
+            print(f"El Deployment {deployment_name} no existe en el namespace {namespace}.")
         else:
             print(f"Ocurrió un error inesperado al intentar actualizar el Deployment: {e}")
-
 
 def ejecutar_periodicamente(deployment_name, namespace, intervalo_segundos):
     
@@ -117,7 +113,6 @@ def check_status():
         return jsonify({'error': 'Missing worker_id'}), 400
 
     redis_master.actualizar_worker(worker_id, worker_type)
-
 
     if not is_user:
         redis_master.setex(f"workers_cloud:{worker_id}", 60, "alive")
@@ -233,9 +228,9 @@ def consultar_maestro():
     global current_master_host
 
     sentinels = [
-        ('redis-sentinel-0.service-redis-sentinel.default.svc.cluster.local', 26379),
-        ('redis-sentinel-1.service-redis-sentinel.default.svc.cluster.local', 26379),
-        ('redis-sentinel-2.service-redis-sentinel.default.svc.cluster.local', 26379),
+        (SENTINEL0_HOST, SENTINEL_PORT),
+        (SENTINEL1_HOST, SENTINEL_PORT),
+        (SENTINEL2_HOST, SENTINEL_PORT),
     ]
 
     sentinel = Sentinel(sentinels, socket_timeout=0.1)
