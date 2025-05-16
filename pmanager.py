@@ -258,6 +258,10 @@ def get_pending_tasks():
         connection = connect_rabbitmq()
         channel = connection.channel()
         queue = channel.queue_declare(queue='workers_queue', durable=True)
+        
+        print(f"📦 Info de la cola: {queue.method}")
+        print(f"🔢 Cantidad de mensajes en la cola: {queue.method.message_count}")
+        
         connection.close()
         return queue.method.message_count
     except Exception as e:
