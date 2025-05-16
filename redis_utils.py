@@ -70,7 +70,7 @@ class RedisUtils:
             gpu_workers = {
                 key: self.redis_client.hgetall(key)  # Obtiene el mapeo completo
                 for key in worker_keys
-                if self.redis_client.hget(key, "worker_type") != b"worker_cpu"  # Filtra por tipo GPU
+                if self.redis_client.hget(key, "worker_type") == b"worker_user"  # Filtra por tipo GPU
             }
             return gpu_workers
         except redis.RedisError as e:
@@ -85,7 +85,7 @@ class RedisUtils:
             cpu_workers = {
                 key: self.redis_client.hgetall(key)  # Obtiene el mapeo completo
                 for key in worker_keys
-                if self.redis_client.hget(key, "worker_type") != b"worker_gpu"  # Filtra por tipo CPU
+                if self.redis_client.hget(key, "worker_type") == b"worker_cpu"  # Filtra por tipo CPU
             }
             return cpu_workers
         except redis.RedisError as e:
@@ -107,7 +107,7 @@ class RedisUtils:
         """Actualizar el estado de un worker en Redis."""
         try:
             self.redis_client.hset(f"workers:{worker_id}", mapping={"status": "alive", "worker_type": worker_type})
-            self.redis_client.expire(f"workers:{worker_id}", 30)
+            self.redis_client.expire(f"workers:{worker_id}", 60)
         except redis.RedisError as e:
             print(f"Error al actualizar worker en Redis: {e}")
             self._connect()  # Try reconnecting and retry the operation

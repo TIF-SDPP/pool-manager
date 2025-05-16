@@ -115,9 +115,9 @@ def check_status():
 
 
     if not is_user:
-        redis_master.setex(f"workers_cloud:{worker_id}", 30, "alive")
+        redis_master.setex(f"workers_cloud:{worker_id}", 60, "alive")
     else:
-        redis_master.setex(f"workers_local:{worker_id}", 30, "alive")
+        redis_master.setex(f"workers_local:{worker_id}", 60, "alive")
 
     print(f"Worker {worker_id} registered. Local: {is_user}")
     return jsonify({'status': 'OK'})
