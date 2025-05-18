@@ -27,7 +27,7 @@ jobs:
       with:
         context: .
         push: true
-        tags: leoduville5/poolmanager:v45
+        tags: leoduville5/poolmanager:v46
 
     - name: Authenticate to Google Cloud
       uses: google-github-actions/auth@v2

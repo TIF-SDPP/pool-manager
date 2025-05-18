@@ -23,6 +23,7 @@ SENTINEL2_HOST = os.getenv("SENTINEL2_HOST")
 SENTINEL_PORT = os.getenv("SENTINEL_PORT")
 
 PREFIX_WORKERS_CPU = 5
+PREFIX_WORKERS_GPU = 8
 MIN_WORKERS_COUNT = 1
 MAX_WORKERS_COUNT = 10
 PENDING_TASK_DIVISOR = 5
@@ -153,12 +154,15 @@ def on_message_received(ch, method, properties, body):
 
     workers_cpu = redis_utils.get_active_workers_cpu()
 
+    prefix_length = len(data.get("prefix"))
+    print(prefix_length)
+
     if (len(workers_cpu) > 0):
-        
-        prefix_length = len(data.get("prefix"))
-        print(prefix_length)
         if (prefix_length > PREFIX_WORKERS_CPU):
             data["prefix"] = "00000"
+    else:
+        if (prefix_length > PREFIX_WORKERS_GPU):
+            data["prefix"] = "00000000"
 
     for i in range(escalar):
         task_data = {
