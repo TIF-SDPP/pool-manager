@@ -157,14 +157,14 @@ def on_message_received(ch, method, properties, body):
     prefix_length = len(data.get("prefix"))
     print(prefix_length)
 
-    if (len(workers_cpu) > 0):
-        if (prefix_length > PREFIX_WORKERS_CPU):
-            data["prefix"] = "00000"
-            redis_master.redis_client.set('prefix_key', '00000')  # Actualizar el prefijo en Redis
-    else:
-        if (prefix_length > PREFIX_WORKERS_GPU):
-            data["prefix"] = "00000000"
-            redis_master.redis_client.set('prefix_key', '00000000')  # Actualizar el prefijo en Redis
+    #if (len(workers_cpu) > 0):
+#        if (prefix_length > PREFIX_WORKERS_CPU):
+#            data["prefix"] = "00000"
+#            redis_master.redis_client.set('prefix_key', '00000')  # Actualizar el prefijo en Redis
+#    else:
+    if (prefix_length > PREFIX_WORKERS_GPU):
+        data["prefix"] = "00000000"
+        redis_master.redis_client.set('prefix_key', '00000000')  # Actualizar el prefijo en Redis
 
     for i in range(escalar):
         task_data = {
